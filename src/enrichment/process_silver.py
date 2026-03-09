@@ -88,6 +88,7 @@ def process_bronze_to_silver():
     logger.info(f"Starting Gemini processing for {len(jobs_to_process)} jobs (Batch size: {batch_size})...")
     client = GeminiEnrichmentClient()
     successful_jobs = []
+    failed_jobs = []
     failed_jobs_count = 0
     
     # Generate the single run ID for this silver batch
@@ -105,6 +106,12 @@ def process_bronze_to_silver():
             job_description = job.get('job_description')
             if not job_description:
                 failed_jobs_count += 1
+                job['silver_medallion_audit'] = {
+                    'failure_reason': 'missing_job_description',
+                    'pipeline_run_id': pipeline_run_id,
+                    'failed_at': datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+                }
+                failed_jobs.append(job)
                 logger.warning(f"Job missing description (ID: {job.get('job_id', 'unknown')}). Skipping.")
                 continue
                 
@@ -126,6 +133,12 @@ def process_bronze_to_silver():
                 successful_jobs.append(job)
             else:
                 failed_jobs_count += 1
+                job['silver_medallion_audit'] = {
+                    'failure_reason': 'gemini_enrichment_failed',
+                    'pipeline_run_id': pipeline_run_id,
+                    'failed_at': datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+                }
+                failed_jobs.append(job)
                 logger.warning(f"Failed to enrich job (ID: {job.get('job_id', 'unknown')}). It will not be saved to Silver.")
             
             # Simple manual rate limiting protection 
@@ -142,10 +155,18 @@ def process_bronze_to_silver():
             
         logger.info(f"Successfully enriched {len(successful_jobs)} jobs.")
         logger.info(f"Saved to {output_filepath}")
-        if failed_jobs_count > 0:
-            logger.warning(f"{failed_jobs_count} jobs failed enrichment and were skipped.")
-    else:
-        logger.error("No jobs were successfully enriched. Nothing saved to Silver layer.")
+        
+    if failed_jobs:
+        failed_filename = f"silver_failed_enrichment_{run_date.replace('-', '')}_{pipeline_run_id[:8]}.json"
+        failed_filepath = os.path.join(silver_partition_path, failed_filename)
+        
+        with open(failed_filepath, 'w', encoding='utf-8') as f:
+            json.dump(failed_jobs, f, ensure_ascii=False, indent=2)
+            
+        logger.warning(f"{len(failed_jobs)} jobs failed enrichment and were saved to {failed_filepath} for later reprocessing.")
+        
+    if not successful_jobs and not failed_jobs:
+        logger.error("No jobs were processed. Nothing saved to Silver layer.")
 
 if __name__ == "__main__":
     process_bronze_to_silver()
