@@ -58,11 +58,11 @@ def process_bronze_to_silver():
         
     logger.info(f"Found {len(all_bronze_jobs)} total jobs to try enriching.")
 
-    # 3. Deduplicate inputs against existing Silver runs based on job_id
+    # 3. Deduplicate inputs against existing Silver runs based on job_id (only successfully enriched ones)
     existing_silver_job_ids = set()
     for root, _, files in os.walk(silver_path):
         for file in files:
-            if file.endswith(".json"):
+            if file.startswith("silver_enriched_") and file.endswith(".json"):
                 try:
                     with open(os.path.join(root, file), 'r', encoding='utf-8') as f:
                         data = json.load(f)
