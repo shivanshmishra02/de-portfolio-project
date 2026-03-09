@@ -40,7 +40,28 @@ def main():
         # "Analytics Engineer in India"
     ]
     
+    # ---------------------------------------------------------
+    # Deduplication Logic: Load existing job_ids from Bronze
+    # ---------------------------------------------------------
+    existing_job_ids = set()
+    if os.path.exists(bronze_path):
+        for filename in os.listdir(bronze_path):
+            if filename.endswith(".json"):
+                filepath = os.path.join(bronze_path, filename)
+                try:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        for job in data:
+                            # JSearch API usually provides "job_id"
+                            if "job_id" in job:
+                                existing_job_ids.add(job["job_id"])
+                except Exception as e:
+                    logger.warning(f"Failed to read existing bronze file {filename} for deduplication: {e}")
+                    
+    logger.info(f"Found {len(existing_job_ids)} existing job_ids in Bronze layer for deduplication.")
+    
     all_jobs = []
+    total_duplicates_skipped = 0
     
     for query in queries:
         logger.info(f"Processing query: '{query}'")
@@ -54,7 +75,20 @@ def main():
             logger.info(f"Retrieved {len(jobs)} jobs for query '{query}'")
             
             # Enrich each job posting with Medallion audit columns
+            skipped_this_query = 0
             for job in jobs:
+                job_id = job.get("job_id")
+                
+                # Check for duplication
+                if job_id and job_id in existing_job_ids:
+                    skipped_this_query += 1
+                    total_duplicates_skipped += 1
+                    continue
+                
+                # Add to set so we don't duplicate within the same run across different queries
+                if job_id:
+                    existing_job_ids.add(job_id)
+                
                 job['medallion_audit'] = {
                     'created_at': datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                     'pipeline_run_id': pipeline_run_id,
@@ -63,7 +97,9 @@ def main():
                     'search_query': query
                 }
             
-            all_jobs.extend(jobs)
+                all_jobs.append(job)
+                
+            logger.info(f"Retrieved {len(jobs)} jobs for query '{query}'. Skipped {skipped_this_query} duplicates.")
         else:
             logger.warning(f"No valid data returned for query '{query}'")
             
@@ -76,9 +112,9 @@ def main():
         with open(output_filepath, 'w', encoding='utf-8') as f:
             json.dump(all_jobs, f, ensure_ascii=False, indent=2)
             
-        logger.info(f"Successfully saved {len(all_jobs)} total jobs to {output_filepath}")
+        logger.info(f"Successfully saved {len(all_jobs)} new jobs to {output_filepath}. Total duplicates skipped: {total_duplicates_skipped}")
     else:
-        logger.warning("No jobs were fetched across all queries. Nothing to save to bronze.")
+        logger.warning(f"No new jobs were fetched across all queries (Total duplicates skipped: {total_duplicates_skipped}). Nothing to save to bronze.")
 
 if __name__ == "__main__":
     main()
