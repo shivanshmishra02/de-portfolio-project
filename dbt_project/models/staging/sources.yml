@@ -1,0 +1,9 @@
+version: 2
+
+sources:
+  - name: skillpulse_silver
+    database: "{{ env_var('BQ_PROJECT_ID') }}"
+    schema: "{{ env_var('BQ_DATASET_SILVER', 'skillpulse_silver') }}"
+    tables:
+      - name: stg_job_postings
+        description: "Raw enriched JSON job postings batched in from the Silver layer."

@@ -1,0 +1,58 @@
+version: 2
+
+models:
+  - name: dim_companies
+    description: "Company level dimensions."
+    columns:
+      - name: company_key
+        description: "Primary key"
+        tests:
+          - unique
+          - not_null
+      - name: company_name
+        description: "Company name"
+        tests:
+          - not_null
+
+  - name: dim_locations
+    description: "Geography dimension for the jobs."
+    columns:
+      - name: location_key
+        description: "Primary key"
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_roles
+    description: "Title, seniority, and abstraction classifications."
+    columns:
+      - name: role_key
+        description: "Primary key"
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_date
+    columns:
+      - name: date_key
+        description: "Primary key"
+        tests:
+          - unique
+          - not_null
+
+  - name: fact_job_postings
+    description: "Central fact table matching salary/experience ranges to standard dimensions."
+    columns:
+      - name: job_id
+        description: "Grain of the table (matches Bronze API IDs)"
+        tests:
+          - unique
+          - not_null
+
+snapshots:
+  - name: dim_skills
+    columns:
+      - name: job_skill_key
+        tests:
+          - unique
+          - not_null

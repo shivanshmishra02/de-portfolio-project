@@ -1,0 +1,11 @@
+skillpulse_dbt:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('BQ_PROJECT_ID') }}"
+      dataset: "{{ env_var('BQ_DATASET_GOLD', 'skillpulse_gold') }}"
+      threads: 4
+      timeout_seconds: 300
+      location: "{{ env_var('BQ_LOCATION', 'US') }}"
