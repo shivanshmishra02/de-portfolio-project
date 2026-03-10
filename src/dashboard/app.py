@@ -47,7 +47,7 @@ dataset = get_bq_dataset()
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3048/3048122.png", width=50)
 st.sidebar.title("SkillPulse India")
 st.sidebar.markdown("---")
-page = st.sidebar.radio("Navigation", ["Skill Demand", "Salary by Role", "Geographic Intelligence"])
+page = st.sidebar.radio("Navigation", ["Skill Demand", "Salary by Role", "Geographic Intelligence", "Company Intelligence", "Role Intelligence"])
 
 # --- PAGE 1: Skill Demand ---
 if page == "Skill Demand":
@@ -171,3 +171,105 @@ elif page == "Geographic Intelligence":
             
     except Exception as e:
         st.error(f"Error loading geographic data: {e}")
+
+# --- PAGE 4: Company Intelligence ---
+elif page == "Company Intelligence":
+    st.title("🏢 Company Intelligence")
+    st.markdown("Top hiring companies, their remote policies, and required experience.")
+    
+    query = f"SELECT * FROM `{dataset}.mart_company_hiring` ORDER BY total_postings DESC"
+    try:
+        df = load_data(query)
+        
+        if not df.empty:
+            # Metrics Row
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Companies Tracking", f"{len(df):,}")
+            with col2:
+                st.metric("Avg Remote % (Top 50)", f"{df.head(50)['remote_pct'].mean()*100:.1f}%")
+            with col3:
+                st.metric("Most Sought Skill (Overall)", df['top_skill'].mode()[0] if not df['top_skill'].empty else "N/A")
+
+            # Chart: Top Companies by Volume
+            st.subheader("Top Hiring Companies")
+            top_companies = df.head(15)
+            fig_bar = px.bar(
+                top_companies,
+                x="company_name",
+                y="total_postings",
+                color="company_sector",
+                hover_data=["top_skill", "avg_experience_years"],
+                labels={
+                    "total_postings": "Total Postings",
+                    "company_name": "Company",
+                    "company_sector": "Sector"
+                }
+            )
+            fig_bar.update_layout(xaxis={'categoryorder':'total descending'})
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+            # Data Table
+            st.subheader("Company Data Deep Dive")
+            st.dataframe(
+                df.style.format({
+                    "avg_experience_years": "{:.1f}",
+                    "remote_pct": "{:.0%}"
+                }),
+                use_container_width=True
+            )
+        else:
+            st.warning("No company data available.")
+            
+    except Exception as e:
+        st.error(f"Error loading company data: {e}")
+
+# --- PAGE 5: Role Intelligence ---
+elif page == "Role Intelligence":
+    st.title("🎯 Role & Seniority Intelligence")
+    st.markdown("Demand breakdown by seniority levels and technology stacks.")
+    
+    query = f"SELECT * FROM `{dataset}.mart_seniority_demand`"
+    try:
+        df = load_data(query)
+        
+        if not df.empty:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("Demand by Seniority Level")
+                seniority_agg = df.groupby('seniority_level')['job_count'].sum().reset_index()
+                fig_pie = px.pie(
+                    seniority_agg,
+                    values="job_count",
+                    names="seniority_level",
+                    hole=0.4,
+                    color_discrete_sequence=px.colors.sequential.Teal
+                )
+                st.plotly_chart(fig_pie, use_container_width=True)
+
+            with col2:
+                st.subheader("Tech Stack Demand Heatmap")
+                heatmap_data = pd.pivot_table(
+                    df, 
+                    values='job_count', 
+                    index='tech_stack_category', 
+                    columns='seniority_level', 
+                    aggfunc='sum', 
+                    fill_value=0
+                )
+                fig_heat = px.imshow(
+                    heatmap_data,
+                    labels=dict(x="Seniority", y="Tech Stack", color="Job Count"),
+                    color_continuous_scale="Viridis",
+                    aspect="auto"
+                )
+                st.plotly_chart(fig_heat, use_container_width=True)
+                
+            st.subheader("Raw Demand Data")
+            st.dataframe(df, use_container_width=True)
+        else:
+            st.warning("No role demand data available.")
+            
+    except Exception as e:
+        st.error(f"Error loading role data: {e}")
