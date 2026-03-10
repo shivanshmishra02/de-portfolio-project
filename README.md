@@ -27,10 +27,21 @@ gcloud auth application-default login
 ```
 This will open a browser window to authenticate with your Google account and locally cache the necessary credentials for the `google-cloud-bigquery` and `dbt-bigquery` adapters to securely connect.
 
-## Looker Studio Dashboard setup
-1. Run `python -m src.utils.bq_views` to provision Looker backend queries.
-2. Link your GCP profile on Looker Studio.
-3. Add `skillpulse_gold` datasets based on instructions defined within `DASHBOARD_SETUP.md`.
+## Streamlit Dashboard setup
+1. Set up your Google Application Default Credentials as described above.
+2. Install the necessary dashboard requirements: `pip install streamlit pandas plotly google-cloud-bigquery`
+3. Launch the dashboard locally:
+```bash
+streamlit run src/dashboard/app.py
+```
 
-## Looker Dashboard URL
-[Looker Dashboard - Insert Prod URL Here]()
+### Dashboard Features
+The SkillPulse Streamlit application serves intelligence across 5 key dimensions:
+- **Skill Demand:** Top 20 skills and market trends
+- **Salary by Role:** Compensation spread and expectations
+- **Geographic Intelligence:** City-wise job volume and top skills
+- **Company Intelligence:** Leading hiring organizations and remote work adoption
+- **Role Intelligence:** Demand distribution across seniority levels and tech stacks
+
+## Looker Dashboard Setup (Deprecated)
+For instructions on the legacy Looker Studio integration, see `DASHBOARD_SETUP.md`.
