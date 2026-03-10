@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from src.enrichment.gemini_client import GeminiEnrichmentClient
+from src.utils.storage_client import StorageClient
 
 def chunks(lst, n):
     """Yield successive n-sized chunks from lst."""
@@ -34,23 +35,21 @@ def process_bronze_to_silver():
     silver_partition_path = os.path.join(silver_path, run_date)
     os.makedirs(silver_partition_path, exist_ok=True)
     
+    # Initialize Storage Client
+    storage_client = StorageClient()
+    
     # 2. Gather Bronze jobs
     logger.info(f"Scanning {bronze_path} for raw Bronze files...")
-    if not os.path.exists(bronze_path):
-        logger.error(f"Bronze path does not exist: {bronze_path}")
-        return
         
     all_bronze_jobs = []
-    for filename in os.listdir(bronze_path):
-        if filename.endswith(".json"):
-            filepath = os.path.join(bronze_path, filename)
-            try:
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    if isinstance(data, list):
-                        all_bronze_jobs.extend(data)
-            except Exception as e:
-                logger.error(f"Failed reading {filepath}: {e}")
+    bronze_files = storage_client.list_files(bronze_path, suffix=".json")
+    for filepath in bronze_files:
+        try:
+            data = storage_client.read_json(filepath)
+            if isinstance(data, list):
+                all_bronze_jobs.extend(data)
+        except Exception as e:
+            logger.error(f"Failed reading {filepath}: {e}")
                 
     if not all_bronze_jobs:
         logger.warning("No Bronze jobs found to process. Exiting.")
@@ -60,17 +59,16 @@ def process_bronze_to_silver():
 
     # 3. Deduplicate inputs against existing Silver runs based on job_id (only successfully enriched ones)
     existing_silver_job_ids = set()
-    for root, _, files in os.walk(silver_path):
-        for file in files:
-            if file.startswith("silver_enriched_") and file.endswith(".json"):
-                try:
-                    with open(os.path.join(root, file), 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        for job in data:
-                            if "job_id" in job:
-                                existing_silver_job_ids.add(job["job_id"])
-                except Exception as e:
-                    logger.warning(f"Error reading existing silver file {file}: {e}")
+    silver_files = storage_client.list_files(silver_path, suffix=".json")
+    for filepath in silver_files:
+        if "silver_enriched_" in filepath:
+            try:
+                data = storage_client.read_json(filepath)
+                for job in data:
+                    if "job_id" in job:
+                        existing_silver_job_ids.add(job["job_id"])
+            except Exception as e:
+                logger.warning(f"Error reading existing silver file {filepath}: {e}")
                     
     jobs_to_process = [
         job for job in all_bronze_jobs 
@@ -148,20 +146,18 @@ def process_bronze_to_silver():
     # 5. Save Output
     if successful_jobs:
         output_filename = f"silver_enriched_{run_date.replace('-', '')}_{pipeline_run_id[:8]}.json"
-        output_filepath = os.path.join(silver_partition_path, output_filename)
+        output_filepath = f"{silver_partition_path}/{output_filename}" if storage_client.mode == "gcs" else os.path.join(silver_partition_path, output_filename)
         
-        with open(output_filepath, 'w', encoding='utf-8') as f:
-            json.dump(successful_jobs, f, ensure_ascii=False, indent=2)
+        storage_client.write_json(successful_jobs, output_filepath)
             
         logger.info(f"Successfully enriched {len(successful_jobs)} jobs.")
         logger.info(f"Saved to {output_filepath}")
         
     if failed_jobs:
         failed_filename = f"silver_failed_enrichment_{run_date.replace('-', '')}_{pipeline_run_id[:8]}.json"
-        failed_filepath = os.path.join(silver_partition_path, failed_filename)
+        failed_filepath = f"{silver_partition_path}/{failed_filename}" if storage_client.mode == "gcs" else os.path.join(silver_partition_path, failed_filename)
         
-        with open(failed_filepath, 'w', encoding='utf-8') as f:
-            json.dump(failed_jobs, f, ensure_ascii=False, indent=2)
+        storage_client.write_json(failed_jobs, failed_filepath)
             
         logger.warning(f"{len(failed_jobs)} jobs failed enrichment and were saved to {failed_filepath} for later reprocessing.")
         

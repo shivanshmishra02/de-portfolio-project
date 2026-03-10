@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from src.ingestion.jsearch_client import JSearchClient
+from src.utils.storage_client import StorageClient
 
 def main():
     # Load env variables from .env
@@ -33,6 +34,9 @@ def main():
     # Initialize client
     client = JSearchClient()
     
+    # Initialize Storage Client
+    storage_client = StorageClient()
+    
     # Define queries to search for
     queries = [
         "Data Engineer in India",
@@ -44,19 +48,17 @@ def main():
     # Deduplication Logic: Load existing job_ids from Bronze
     # ---------------------------------------------------------
     existing_job_ids = set()
-    if os.path.exists(bronze_path):
-        for filename in os.listdir(bronze_path):
-            if filename.endswith(".json"):
-                filepath = os.path.join(bronze_path, filename)
-                try:
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        for job in data:
-                            # JSearch API usually provides "job_id"
-                            if "job_id" in job:
-                                existing_job_ids.add(job["job_id"])
-                except Exception as e:
-                    logger.warning(f"Failed to read existing bronze file {filename} for deduplication: {e}")
+    
+    bronze_files = storage_client.list_files(bronze_path, suffix=".json")
+    for filepath in bronze_files:
+        try:
+            data = storage_client.read_json(filepath)
+            for job in data:
+                # JSearch API usually provides "job_id"
+                if "job_id" in job:
+                    existing_job_ids.add(job["job_id"])
+        except Exception as e:
+            logger.warning(f"Failed to read existing bronze file {filepath} for deduplication: {e}")
                     
     logger.info(f"Found {len(existing_job_ids)} existing job_ids in Bronze layer for deduplication.")
     
@@ -107,10 +109,11 @@ def main():
         # Save to bronze layer as raw JSON
         # Format filename: source_system_YYYYMMDD_runID.json
         output_filename = f"{source_system}_{run_date.replace('-', '')}_{pipeline_run_id[:8]}.json"
-        output_filepath = os.path.join(bronze_path, output_filename)
         
-        with open(output_filepath, 'w', encoding='utf-8') as f:
-            json.dump(all_jobs, f, ensure_ascii=False, indent=2)
+        # Unify path handling
+        output_filepath = f"{bronze_path}/{output_filename}" if storage_client.mode == "gcs" else os.path.join(bronze_path, output_filename)
+        
+        storage_client.write_json(all_jobs, output_filepath)
             
         logger.info(f"Successfully saved {len(all_jobs)} new jobs to {output_filepath}. Total duplicates skipped: {total_duplicates_skipped}")
     else:

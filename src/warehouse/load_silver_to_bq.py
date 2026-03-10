@@ -4,6 +4,7 @@ import json
 import logging
 from google.cloud import bigquery
 from dotenv import load_dotenv
+from src.utils.storage_client import StorageClient
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,9 +38,8 @@ def load_silver_to_bq():
     logger.info(f"Targeting BigQuery Table: {target_table_id}")
     logger.info(f"Scanning Silver Layer: {silver_path}")
     
-    if not os.path.exists(silver_path):
-        logger.error(f"Silver path does not exist: {silver_path}")
-        return
+    # Initialize Storage Client
+    storage_client = StorageClient()
 
     # Configuration for the BigQuery batch Load Job
     # Using SOURCE_FORMAT=NEWLINE_DELIMITED_JSON requires jsonl format,
@@ -60,17 +60,15 @@ def load_silver_to_bq():
     total_files_scanned = 0
 
     # Crawl Silver for enriched data
-    for root, _, files in os.walk(silver_path):
-        for file in files:
-            # We strictly want the successfully enriched payload files
-            if file.startswith("silver_enriched_") and file.endswith(".json"):
-                total_files_scanned += 1
-                filepath = os.path.join(root, file)
-                try:
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        
-                    for job in data:
+    silver_files = storage_client.list_files(silver_path, suffix=".json")
+    for filepath in silver_files:
+        # We strictly want the successfully enriched payload files
+        if "silver_enriched_" in filepath:
+            total_files_scanned += 1
+            try:
+                data = storage_client.read_json(filepath)
+                    
+                for job in data:
                         # Extract the nested output from Gemini
                         ai_data = job.get('ai_enriched_data')
                         
@@ -111,8 +109,8 @@ def load_silver_to_bq():
                                 
                         all_valid_jobs.append(flat_job)
                         
-                except Exception as e:
-                    logger.error(f"Error reading file {filepath}: {e}")
+            except Exception as e:
+                logger.error(f"Error reading file {filepath}: {e}")
 
     logger.info(f"Scanned {total_files_scanned} files.")
     logger.info(f"Skipped {failed_enrichment_ignored} jobs lacking enrichment confidence.")

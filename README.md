@@ -26,3 +26,11 @@ To set this up, install the [Google Cloud CLI](https://cloud.google.com/sdk/docs
 gcloud auth application-default login
 ```
 This will open a browser window to authenticate with your Google account and locally cache the necessary credentials for the `google-cloud-bigquery` and `dbt-bigquery` adapters to securely connect.
+
+## Looker Studio Dashboard setup
+1. Run `python -m src.utils.bq_views` to provision Looker backend queries.
+2. Link your GCP profile on Looker Studio.
+3. Add `skillpulse_gold` datasets based on instructions defined within `DASHBOARD_SETUP.md`.
+
+## Looker Dashboard URL
+[Looker Dashboard - Insert Prod URL Here]()
