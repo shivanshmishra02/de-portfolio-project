@@ -69,29 +69,16 @@ def load_silver_to_bq():
                 data = storage_client.read_json(filepath)
                     
                 for job in data:
-                        # Extract the nested output from Gemini
-                        ai_data = job.get('ai_enriched_data')
+                        audit_data = job.get('silver_medallion_audit', {})
                         
-                        # Rule: Failed enrichment records (enrichment_confidence = null) 
-                        # should be flagged, not loaded to Gold
-                        if not ai_data or not ai_data.get('enrichment_confidence'):
-                            logger.debug(f"Skipping job {job.get('job_id')} due to missing enrichment confidence.")
+                        # Rule: Failed enrichment records are flagged by their failure_reason or lack of confidence
+                        if audit_data.get('failure_reason') or not audit_data.get('enrichment_confidence'):
+                            logger.debug(f"Skipping job {job.get('source_job_id') or job.get('job_id')} due to missing confidence/failure.")
                             failed_enrichment_ignored += 1
                             continue
                             
                         # To flatten slightly for BigQuery schema auto-detection purposes 
-                        # without making the structure too complex:
-                        # We merge 'ai_enriched_data' and 'silver_medallion_audit' up to the root level.
-                        # (Note: dbt could handle the JSON extraction, but BigQuery handles flat structures better
-                        # for standard tables).
-                        
                         flat_job = dict(job)
-                        
-                        # Flatten AI Output
-                        if 'ai_enriched_data' in flat_job:
-                            ai_dict = flat_job.pop('ai_enriched_data')
-                            for k, v in ai_dict.items():
-                                flat_job[f"ai_{k}"] = v
                                 
                         # Flatten Medallion Audit
                         if 'silver_medallion_audit' in flat_job:
