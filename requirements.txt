@@ -1,1 +1,5 @@
 google-cloud-storage
+streamlit
+pandas
+plotly
+db-dtypes
