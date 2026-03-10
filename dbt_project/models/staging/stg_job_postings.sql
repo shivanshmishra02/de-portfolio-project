@@ -9,37 +9,41 @@ with source as (
 
 select
     -- Primary Identifiers
-    cast(job_id as string) as job_id,
+    cast(job_id as string) as job_id, -- Legacy
+    cast(source_job_id as string) as source_job_id,
     
     -- Dimensions mappings payload
-    cast(employer_name as string) as employer_name,
+    cast(company_name as string) as company_name,
+    cast(company_sector as string) as company_sector,
     cast(job_title as string) as job_title,
-    cast(job_city as string) as job_city,
-    cast(job_state as string) as job_state,
-    cast(job_country as string) as job_country,
-    cast(job_is_remote as boolean) as job_is_remote,
+    cast(city as string) as city,
+    cast(state as string) as state,
+    cast(country as string) as country,
+    cast(employment_type as string) as employment_type,
+    cast(posted_at as string) as posted_at,
+    cast(expires_at as string) as expires_at,
+    
+    -- Unified parsing overrides
+    cast(work_mode as string) as work_mode,
+    cast(degree_requirement as string) as degree_requirement,
+    cast(experience_years as float64) as experience_years,
     
     -- AI Enriched Fields
-    cast(ai_role_category as string) as role_category,
-    cast(ai_seniority_level as string) as seniority_level,
-    cast(ai_work_mode as string) as work_mode,
-    cast(ai_salary_min_lpa as float64) as salary_min_lpa,
-    cast(ai_salary_max_lpa as float64) as salary_max_lpa,
-    cast(ai_experience_years_min as int64) as experience_years_min,
-    cast(ai_experience_years_max as int64) as experience_years_max,
-    cast(ai_education_required as string) as education_required,
+    cast(tech_stack_category as string) as tech_stack_category,
+    cast(seniority_level as string) as seniority_level,
+    cast(salary_min_lpa as float64) as salary_min_lpa,
+    cast(salary_max_lpa as float64) as salary_max_lpa,
     
-    -- Extracted Complex Arrays (We parse JSON string array directly in BigQuery if bigquery stored it as array of strings, but since it auto-detected, we just select it to be unnested in dimension step)
-    ai_skills_required,
-    ai_skills_preferred,
+    -- Extracted Complex Arrays (Auto-detected schema passes these as string representation for now)
+    skills,
     
     -- Medallion Audit Columns
     cast(audit_enriched_at as timestamp) as enriched_at,
     cast(audit_pipeline_run_id as string) as pipeline_run_id,
-    cast(medallion_audit.source_system as string) as source_system,
+    cast(source_api as string) as source_api,
     cast(audit_enrichment_confidence as string) as enrichment_confidence
 
 from source
 where
-    job_id is not null
-    and audit_enrichment_confidence is not null
+    (source_job_id is not null or job_id is not null)
+

@@ -7,11 +7,11 @@ with stg_jobs as (
 )
 
 select distinct
-    {{ dbt_utils.generate_surrogate_key(['job_title', 'seniority_level', 'role_category']) }} as role_key,
+    {{ dbt_utils.generate_surrogate_key(['job_title', 'seniority_level', 'tech_stack_category']) }} as role_key,
     job_title as title,
     seniority_level,
-    role_category,
+    tech_stack_category,
     min(enriched_at) as first_seen_at
 from stg_jobs
 where job_title is not null
-group by job_title, seniority_level, role_category
+group by job_title, seniority_level, tech_stack_category
