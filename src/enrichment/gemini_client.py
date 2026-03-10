@@ -9,58 +9,26 @@ from google.genai.errors import APIError
 logger = logging.getLogger(__name__)
 
 SKILL_EXTRACTION_PROMPT = """
-You are a structured data extraction engine for job postings.
-Extract information from the job posting below and return ONLY 
-a valid JSON object. No explanation, no markdown, no extra text.
+Analyze this job description and return ONLY valid JSON with these fields:
 
-EXTRACTION RULES:
-1. skills_required: List all technical skills explicitly mentioned 
-   as required. Normalize names (e.g. "MS SQL" -> "SQL Server", 
-   "k8s" -> "Kubernetes"). Max 15 skills.
-2. skills_preferred: Skills marked as "good to have", "preferred", 
-   or "bonus". Can overlap with required.
-3. experience_years_min: Minimum years of experience as integer. 
-   Null if not mentioned.
-4. experience_years_max: Maximum years if range given. Null if not.
-5. salary_min_lpa: Minimum salary in LPA (Lakhs Per Annum) as float.
-   Convert if in monthly (multiply by 12 and divide by 100000).
-   Null if not mentioned.
-6. salary_max_lpa: Maximum salary in LPA. Null if not mentioned.
-7. salary_currency: "INR" for Indian postings. "USD" if mentioned.
-8. role_category: One of exactly: "Data Engineering", "Data Analysis", 
-   "Machine Learning", "Data Architecture", "Analytics Engineering",
-   "Business Intelligence", "Other"
-9. work_mode: One of exactly: "Remote", "Hybrid", "On-site", "Unknown"
-10. city: Primary city name only. Null if not mentioned.
-11. seniority_level: One of exactly: "Junior", "Mid", "Senior", 
-    "Lead", "Manager", "Unknown"
-12. education_required: Degree if explicitly required. Null if not.
-13. enrichment_confidence: "high" if job description is detailed,
-    "medium" if partial info, "low" if very vague.
-
-OUTPUT FORMAT — return exactly this JSON structure:
 {{
-  "skills_required": [],
-  "skills_preferred": [],
-  "experience_years_min": null,
-  "experience_years_max": null,
-  "salary_min_lpa": null,
-  "salary_max_lpa": null,
-  "salary_currency": "INR",
-  "role_category": "Other",
-  "work_mode": "Unknown",
-  "city": null,
-  "seniority_level": "Unknown",
-  "education_required": null,
-  "enrichment_confidence": "low"
+  "skills": ["skill1", "skill2"],
+  "seniority_level": "Junior|Mid|Senior|Lead|Principal",
+  "tech_stack_category": "Data Platform|MLOps|BI & Analytics|Data Science|Cloud Infrastructure|Other",
+  "work_mode_override": "Remote|Hybrid|Onsite|null",
+  "salary_min_lpa": <number or null>,
+  "salary_max_lpa": <number or null>
 }}
+
+Rules:
+- work_mode_override: only fill if you can clearly determine from JD text, else null
+- salary: extract LPA figures from JD text if mentioned, else null
+- Return ONLY the JSON object, no markdown, no explanation
 
 JOB POSTING TO ANALYZE:
 ---
 {job_description}
 ---
-
-Return ONLY the JSON object. Nothing else.
 """
 
 class GeminiEnrichmentClient:

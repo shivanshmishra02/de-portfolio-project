@@ -8,9 +8,9 @@ with facts as (
 unnested_skills as (
     select 
         f.job_id,
-        trim(replace(replace(cast(skill_json as string), '"', ''), '''', '')) as skill
+        trim(replace(replace(cast(skill_json as string), '"', ''), "'", "")) as skill
     from facts f,
-    unnest(json_query_array(f.skills_array)) as skill_json
+    unnest(f.skills_array) as skill_json
 ),
 clean_skills as (
     select distinct job_id, skill

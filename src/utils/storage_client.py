@@ -31,7 +31,7 @@ class StorageClient:
         elif self.mode == "gcs":
             # For GCS, 'path' is treated as the blob prefix/name
             # E.g., data/bronze/file.json
-            path = path.lstrip("./").lstrip("/")
+            path = path.replace("\\", "/").lstrip("./").lstrip("/")
             blob = self.bucket.blob(path)
             blob.upload_from_string(
                 data=json.dumps(data, indent=2, ensure_ascii=False),
@@ -47,7 +47,7 @@ class StorageClient:
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
         elif self.mode == "gcs":
-            path = path.lstrip("./").lstrip("/")
+            path = path.replace("\\", "/").lstrip("./").lstrip("/")
             blob = self.bucket.blob(path)
             content = blob.download_as_string()
             return json.loads(content)
@@ -66,7 +66,7 @@ class StorageClient:
                         # Keep the absolute/relative structure coherent
                         files.append(os.path.join(root, filename).replace("\\", "/"))
         elif self.mode == "gcs":
-            prefix = directory_path.lstrip("./").lstrip("/")
+            prefix = directory_path.replace("\\", "/").lstrip("./").lstrip("/")
             if not prefix.endswith("/"):
                 prefix += "/"
             blobs = self.bucket.list_blobs(prefix=prefix)
@@ -80,7 +80,7 @@ class StorageClient:
         if self.mode == "local":
             return os.path.exists(path)
         elif self.mode == "gcs":
-            path = path.lstrip("./").lstrip("/")
+            path = path.replace("\\", "/").lstrip("./").lstrip("/")
             blob = self.bucket.blob(path)
             return blob.exists()
         return False

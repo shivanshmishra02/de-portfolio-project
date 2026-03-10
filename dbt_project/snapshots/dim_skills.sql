@@ -12,33 +12,17 @@
 with stg as (
     select * from {{ ref('stg_job_postings') }}
 ),
--- BigQuery treats our loaded python lists as REPEATED fields so we UNNEST
-exploded_required as (
+-- Unnest the JSON array of skills
+exploded_skills as (
     select 
         job_id, 
-        cast(skill as string) as skill_name, 
+        trim(replace(replace(cast(skill as string), '"', ''), "'", "")) as skill_name, 
         'required' as skill_type,
         enriched_at,
         pipeline_run_id,
-        source_system
+        source_api
     from stg,
-    unnest(ai_skills_required) as skill
-),
-exploded_preferred as (
-    select 
-        job_id, 
-        cast(skill as string) as skill_name, 
-        'preferred' as skill_type,
-        enriched_at,
-        pipeline_run_id,
-        source_system
-    from stg,
-    unnest(ai_skills_preferred) as skill
-),
-combined as (
-    select * from exploded_required
-    union all
-    select * from exploded_preferred
+    unnest(skills) as skill
 )
 
 select distinct
@@ -48,8 +32,8 @@ select distinct
     skill_type,
     enriched_at as created_at,
     pipeline_run_id,
-    source_system
-from combined
-where skill_name is not null
+    source_api
+from exploded_skills
+where skill_name is not null and skill_name != ''
 
 {% endsnapshot %}

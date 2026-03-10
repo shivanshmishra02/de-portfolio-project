@@ -6,9 +6,7 @@ with facts as (
     select * from {{ ref('fact_job_postings') }}
 ),
 companies as (
-    select * from {{ ref('dim_companies') }} -- Use the existing pluralized dim model if it exists, or the newly created `dim_company` (waiting to verify the exact name, assuming `dim_company` was just created but checking existing). We created dim_company, so we use that.
-    -- Wait, looking closely: the user asked to "CREATE dim_company.sql", but I see "dim_companies.sql" exists. 
-    -- I will rename my created file to align or just reference dim_company. I created dim_company.sql above. I'll stick to it.
+    select * from {{ ref('dim_company') }} 
 )
 
 -- To get top skill, we need to unnest. This requires a subquery or CTE.
@@ -17,8 +15,9 @@ companies as (
         f.company_key,
         skill
     from facts f,
-    unnest(json_query_array(f.skills_array)) as skill_json -- BigQuery handles JSON arrays a bit differently depending on format. Usually just unnest(skills_array) if it's truly a BQ array, but auto-detect often makes it a JSON string or JSON array. Assuming JSON array.
-    cross join unnest([replace(replace(cast(skill_json as string), '"', ''), '''', '')]) as skill -- clean quotes
+    unnest(f.skills_array) as skill_json
+    cross join unnest([replace(replace(cast(skill_json as string), '"', ''), "'", "")]) as skill
+
 ),
 skill_counts as (
     select 

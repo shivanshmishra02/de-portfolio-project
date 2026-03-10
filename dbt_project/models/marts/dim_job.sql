@@ -25,9 +25,10 @@ select
     end as is_active,
     min(enriched_at) as created_at
 from stg_jobs
-where (source_job_id is not null or job_id is not null)
+where (stg_jobs.source_job_id is not null or stg_jobs.job_id is not null)
 group by
-    coalesce(source_job_id, job_id),
+    stg_jobs.source_job_id,
+    stg_jobs.job_id,
     job_title,
     employment_type,
     experience_years,
