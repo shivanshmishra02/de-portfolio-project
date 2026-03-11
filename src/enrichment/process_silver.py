@@ -156,8 +156,13 @@ def process_bronze_to_silver():
     failed_jobs = []
     failed_jobs_count = 0
     
-    import uuid
-    pipeline_run_id = str(uuid.uuid4())
+    state_file = f"runs/{run_date}_run_state.json"
+    try:
+        run_metadata = storage_client.read_json(state_file)
+        pipeline_run_id = run_metadata.get("run_id", str(uuid.uuid4()))
+    except Exception:
+        pipeline_run_id = str(uuid.uuid4())
+        run_metadata = {"run_id": pipeline_run_id, "run_date": run_date}
     
     job_batches = list(chunks(jobs_to_process, batch_size))
     for batch_idx, batch in enumerate(job_batches, 1):
@@ -282,8 +287,14 @@ def process_bronze_to_silver():
         failed_filepath = f"{silver_partition_path}/{failed_filename}" if storage_client.mode == "gcs" else os.path.join(silver_partition_path, failed_filename)
         
         storage_client.write_json(failed_jobs, failed_filepath)
-            
-        logger.warning(f"{len(failed_jobs)} jobs failed enrichment and were saved to {failed_filepath} for later reprocessing.")
+        logger.warning(f"Saved {failed_jobs_count} failed enrichments to {failed_filepath}. They will be skipped downstream.")
+
+    # Update pipeline run state
+    run_metadata["jobs_enriched_success"] = len(successful_jobs)
+    run_metadata["jobs_enriched_failed"] = failed_jobs_count
+    run_metadata["gemini_calls_made"] = len(jobs_to_process)
+    run_metadata["dead_letter_count"] = failed_jobs_count
+    storage_client.write_json(run_metadata, state_file)
         
     if not successful_jobs and not failed_jobs:
         logger.error("No jobs were processed. Nothing saved to Silver layer.")

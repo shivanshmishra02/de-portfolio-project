@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import logging
+from datetime import datetime, timezone
 from google.cloud import bigquery
 from dotenv import load_dotenv
 from src.utils.storage_client import StorageClient
@@ -24,6 +25,7 @@ def load_silver_to_bq():
     project_id = os.getenv("BQ_PROJECT_ID")
     dataset_silver = os.getenv("BQ_DATASET_SILVER", "skillpulse_silver")
     silver_path = os.getenv("SILVER_PATH", "./data/silver")
+    run_date = os.getenv("PIPELINE_RUN_DATE", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
     
     if not project_id:
         logger.error("BQ_PROJECT_ID missing from .env. Please configure it.")
@@ -45,14 +47,10 @@ def load_silver_to_bq():
     # Using SOURCE_FORMAT=NEWLINE_DELIMITED_JSON requires jsonl format,
     # or we can pass the Python dictionaries directly by loading from disk.
     job_config = bigquery.LoadJobConfig(
-        # We'll let BigQuery auto-detect the schema for the initial staging table.
-        # dbt will handle the strict typing downstream.
         autodetect=True,
-        # Write append ensures we keep a historical log in staging
         write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
-        # We pass python dicts directly, so format isn't strictly needed for the API method used below,
-        # but good practice to define.
-        source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON
+        source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+        schema_update_options=[bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION]
     )
 
     all_valid_jobs = []
@@ -128,6 +126,45 @@ def load_silver_to_bq():
         logger.error(f"BigQuery Load Job failed: {e}")
         if hasattr(load_job, 'errors') and load_job.errors:
              logger.error(f"Detailed BQ Errors: {load_job.errors}")
+
+    # -------- Pipeline Run Logging --------
+    state_file = f"runs/{run_date}_run_state.json"
+    try:
+        run_metadata = storage_client.read_json(state_file)
+    except Exception:
+        run_metadata = {"run_id": "unknown_run", "run_date": run_date}
+        
+    run_metadata["jobs_written_to_bq"] = len(all_valid_jobs)
+    
+    start_time_str = run_metadata.get("dag_trigger_time")
+    if start_time_str:
+        start_time = datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
+        run_duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+    else:
+        run_duration = 0.0
+        
+    run_metadata["run_duration_seconds"] = run_duration
+    run_metadata["status"] = "SUCCESS" if run_metadata.get("jobs_enriched_failed", 0) == 0 else "PARTIAL"
+    
+    # Save final JSON state
+    storage_client.write_json(run_metadata, state_file)
+    
+    # Append to BQ
+    try:
+        # Avoid nested structures because we didn't specify RECORD in BQ schema
+        clean_row = {
+            k: v for k, v in run_metadata.items()
+            if v is not None
+        }
+        bq_run_table_id = f"{project_id}.{os.getenv('BQ_DATASET_GOLD', 'skillpulse_gold')}.pipeline_runs"
+        errors = client.insert_rows_json(bq_run_table_id, [clean_row])
+        if not errors:
+            logger.info("✅ Successfully logged run to pipeline_runs table.")
+        else:
+            logger.error(f"Failed to log run: {errors}")
+    except Exception as e:
+        logger.error(f"Error inserting pipeline_runs to BQ: {e}")
+
 
 if __name__ == "__main__":
     load_silver_to_bq()
