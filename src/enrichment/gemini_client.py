@@ -2,11 +2,25 @@ import os
 import time
 import json
 import logging
+from datetime import datetime
 from typing import Dict, Any, Optional
 from google import genai
 from google.genai.errors import APIError
+from pydantic import BaseModel, ValidationError
+from src.utils.storage_client import StorageClient
+from google.genai.errors import APIError
 
 logger = logging.getLogger(__name__)
+
+class GeminiEnrichment(BaseModel):
+    skills: list[str] = []
+    seniority_level: Optional[str] = None
+    tech_stack_category: Optional[str] = None
+    work_mode_override: Optional[str] = None
+    salary_min_lpa: Optional[float] = None
+    salary_max_lpa: Optional[float] = None
+    experience_years_min: Optional[float] = None
+    experience_years_max: Optional[float] = None
 
 SKILL_EXTRACTION_PROMPT = """
 Analyze this job description and return ONLY valid JSON with these fields:
@@ -47,15 +61,28 @@ class GeminiEnrichmentClient:
             
         # Initialize the new google-genai client
         self.client = genai.Client(api_key=self.api_key)
+        self.storage_client = StorageClient()
         
-    def extract_job_entities(self, job_description: str) -> Optional[Dict[str, Any]]:
+    def _write_dead_letter(self, job_id: str, raw_response: str):
+        try:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            # Write wrapped JSON so storage client handles it cleanly
+            dlq_data = {"job_id": job_id, "raw_response": raw_response}
+            # The prompt asks for gs://skillpulse-india-datalake/dead_letter/... but we'll use our StorageClient wrapper 
+            # for abstract multi-cloud behavior. Using prefix dead_letter/
+            path = f"dead_letter/{date_str}/{job_id}.json"
+            self.storage_client.write_json(dlq_data, path)
+        except Exception as e:
+            logger.error(f"Failed writing to DLQ for {job_id}: {e}")
+
+    def extract_job_entities(self, job_description: str, job_id: str) -> GeminiEnrichment:
         """
         Sends a single job description to Gemini and attempts to parse the returned JSON.
         Implements exponential backoff for rate limits.
         """
         if not job_description or not str(job_description).strip():
-            logger.warning("Empty job description provided. Skipping enrichment.")
-            return None
+            logger.warning(f"Empty job description provided for {job_id}. Skipping enrichment.")
+            return GeminiEnrichment()
             
         formatted_prompt = SKILL_EXTRACTION_PROMPT.format(job_description=job_description)
         
@@ -89,8 +116,9 @@ class GeminiEnrichmentClient:
                     
                 cleaned_text = cleaned_text.strip()
                 
-                # Parse to JSON
-                return json.loads(cleaned_text)
+                # Parse with Pydantic
+                raw_json = json.loads(cleaned_text)
+                return GeminiEnrichment(**raw_json)
                 
             except APIError as e:
                 error_msg = str(e)
@@ -102,20 +130,23 @@ class GeminiEnrichmentClient:
                         logger.info(f"Retrying in {backoff} seconds...")
                         time.sleep(backoff)
                     else:
-                        logger.error("Max retries reached handling Gemini API rate limits.")
-                        return None
+                        logger.error(f"Max retries reached handling Gemini API rate limits for {job_id}.")
+                        self._write_dead_letter(job_id, response_text if response_text else error_msg)
+                        return GeminiEnrichment()
                 else:
-                    logger.error(f"Gemini API Error: {error_msg}")
-                    return None
+                    logger.error(f"Gemini API Error for {job_id}: {error_msg}")
+                    self._write_dead_letter(job_id, response_text if response_text else error_msg)
+                    return GeminiEnrichment()
                     
-            except json.JSONDecodeError as e:
-                # Requirement: Log failure and continue if invalid JSON returned
-                logger.error(f"Failed to parse Gemini response as JSON: {e}")
-                logger.debug(f"Raw Gemini response was: {response_text}")
-                return None
+            except (json.JSONDecodeError, ValidationError) as e:
+                # Requirement: Log failure and write to dead letter queue
+                logger.error(f"Failed to validate Gemini response for {job_id}: {e}")
+                self._write_dead_letter(job_id, response_text)
+                return GeminiEnrichment()
                 
             except Exception as e:
-                logger.error(f"Unexpected error during enrichment: {str(e)}")
-                return None
+                logger.error(f"Unexpected error during enrichment for {job_id}: {str(e)}")
+                self._write_dead_letter(job_id, response_text)
+                return GeminiEnrichment()
                 
-        return None
+        return GeminiEnrichment()

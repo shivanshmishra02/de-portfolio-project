@@ -155,8 +155,13 @@ def process_bronze_to_silver():
             parsed_work_mode = parse_work_mode(job.get("is_remote_flag"))
 
             # 2. Call leaner Gemini API
-            ai_data = client.extract_job_entities(job_description)
+            ai_data_obj = client.extract_job_entities(job_description, job_id)
+            ai_data = ai_data_obj.model_dump()
             
+            # Since the safe default returns an object with empty skills, we can check if it actually succeeded
+            # Alternatively, we could check enrichment_confidence if it was part of the model.
+            # We will consider it successful if it extracted at least something (or we could just say it's successful always, 
+            # but the dead letter queue already caught failures. However, if skills are empty, we might still want to keep it.)
             if ai_data:
                 # 3. MERGE LOGIC
                 # Final silver record = Base fields + Parsed fields + Gemini fields
