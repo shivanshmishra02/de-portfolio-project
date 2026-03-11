@@ -1,7 +1,7 @@
 version: 2
 
 models:
-  - name: dim_companies
+  - name: dim_company
     description: "Company level dimensions."
     columns:
       - name: company_key
@@ -23,10 +23,32 @@ models:
           - unique
           - not_null
 
-  - name: dim_roles
+  - name: dim_role
     description: "Title, seniority, and abstraction classifications."
     columns:
-      - name: role_key
+      - name: role_id
+        description: "Primary key"
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_skill
+    description: "Canonical skills dimension."
+    columns:
+      - name: skill_id
+        description: "Primary key"
+        tests:
+          - unique
+          - not_null
+      - name: skill_name
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_job
+    description: "Job dimension with SCD Type 2 active flag."
+    columns:
+      - name: job_key
         description: "Primary key"
         tests:
           - unique
@@ -49,8 +71,8 @@ models:
           - unique
           - not_null
 
-snapshots:
-  - name: dim_skills
+  - name: fact_job_skills
+    description: "Link table for jobs and skills."
     columns:
       - name: job_skill_key
         tests:
