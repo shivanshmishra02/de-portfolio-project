@@ -7,6 +7,9 @@ with facts as (
 ),
 companies as (
     select * from {{ ref('dim_company') }} 
+),
+dim_job as (
+    select * from {{ ref('dim_job') }}
 )
 
 -- To get top skill, we need to unnest. This requires a subquery or CTE.
@@ -41,6 +44,8 @@ company_agg as (
         avg(f.experience_years) as avg_experience_years,
         countif(f.work_mode = 'Remote') / nullif(count(*), 0) as remote_pct
     from facts f
+    join dim_job dj on f.job_id = dj.source_job_id
+    where dj.is_active = true
     group by f.company_key
 )
 

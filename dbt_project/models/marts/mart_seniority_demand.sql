@@ -10,6 +10,9 @@ locations as (
 ),
 roles as (
     select * from {{ ref('dim_roles') }}
+),
+dim_job as (
+    select * from {{ ref('dim_job') }}
 )
 
 select
@@ -20,9 +23,11 @@ select
 from facts f
 left join locations l on f.location_key = l.location_key
 left join roles r on f.role_key = r.role_key
+left join dim_job dj on f.job_id = dj.source_job_id
 where l.city is not null 
   and r.seniority_level is not null
   and r.tech_stack_category is not null
+  and dj.is_active = true
 group by
     r.seniority_level,
     l.city,

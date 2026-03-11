@@ -5,12 +5,17 @@
 with facts as (
     select job_id, skills_array from {{ ref('fact_job_postings') }}
 ),
+dim_job as (
+    select * from {{ ref('dim_job') }}
+),
 unnested_skills as (
     select 
         f.job_id,
         trim(replace(replace(cast(skill_json as string), '"', ''), "'", "")) as skill
-    from facts f,
-    unnest(f.skills_array) as skill_json
+    from facts f
+    join dim_job dj on f.job_id = dj.source_job_id
+    cross join unnest(f.skills_array) as skill_json
+    where dj.is_active = true
 ),
 clean_skills as (
     select distinct job_id, skill

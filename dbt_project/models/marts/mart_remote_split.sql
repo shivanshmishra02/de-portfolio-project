@@ -8,6 +8,9 @@ with facts as (
 roles as (
     select * from {{ ref('dim_roles') }}
 ),
+dim_job as (
+    select * from {{ ref('dim_job') }}
+),
 base_counts as (
     select
         f.work_mode,
@@ -15,8 +18,10 @@ base_counts as (
         count(distinct f.job_id) as job_count
     from facts f
     left join roles r on f.role_key = r.role_key
+    join dim_job dj on f.job_id = dj.source_job_id
     where f.work_mode is not null
       and r.tech_stack_category is not null
+      and dj.is_active = true
     group by
         f.work_mode,
         r.tech_stack_category
