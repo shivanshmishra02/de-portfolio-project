@@ -45,3 +45,18 @@ The SkillPulse Streamlit application serves intelligence across 5 key dimensions
 
 ## Looker Dashboard Setup (Deprecated)
 For instructions on the legacy Looker Studio integration, see `DASHBOARD_SETUP.md`.
+
+## Data Architecture & Robustness
+The SkillPulse pipeline is hardened to ensure data integrity and observability:
+
+### 1. Slowly Changing Dimensions (SCD)
+- **Type 1 (Overwrite):** `dim_company`, `dim_role`, and `dim_skill` automatically update with the most recent information while preserving their distinct grain.
+- **Type 2 (History):** `dim_job` maintains an `is_active` flag. Jobs expire dynamically based on API signals or a strict 60-day Time-To-Live (TTL).
+
+### 2. Deep Validation & Dead-Letter Queue
+- External AI model extraction (Google Gemini 2.5 Pro) uses strict **Pydantic** typing for robust schema mapping.
+- Unstructured responses that fail validation or trigger safety limits are cleanly diverted to a **Google Cloud Storage Dead-Letter Queue** (`/dead_letter/`) without breaking the daily pipeline run.
+- Regex fallbacks run pre- and post-LLM extraction to guarantee high confidence parsing of null salary and geo-cities.
+
+### 3. Pipeline Observability
+Every daily Airflow run logs execution state recursively into Python `run_state.json` blocks, tracking API efficiency, duplication rates, and extraction confidence. The compiled run details are committed to a `skillpulse_gold.pipeline_runs` BigQuery table for real-time diagnostic monitoring.
