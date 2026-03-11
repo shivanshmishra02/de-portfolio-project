@@ -31,12 +31,16 @@ Analyze this job description and return ONLY valid JSON with these fields:
   "tech_stack_category": "Data Platform|MLOps|BI & Analytics|Data Science|Cloud Infrastructure|Other",
   "work_mode_override": "Remote|Hybrid|Onsite|null",
   "salary_min_lpa": <number or null>,
-  "salary_max_lpa": <number or null>
+  "salary_max_lpa": <number or null>,
+  "experience_years_min": <number or null>,
+  "experience_years_max": <number or null>
 }}
 
 Rules:
 - work_mode_override: only fill if you can clearly determine from JD text, else null
 - salary: extract LPA figures from JD text if mentioned, else null
+- experience_years_min: extract minimum years from phrases like '3+ years', '3-5 years', 'minimum 3 years'. Return number only.
+- experience_years_max: extract maximum if range given, else null.
 - Return ONLY the JSON object, no markdown, no explanation
 
 JOB POSTING TO ANALYZE:

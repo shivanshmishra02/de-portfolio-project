@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import json
+import re
 import logging
 from datetime import datetime, timezone
 from dotenv import load_dotenv
@@ -60,6 +61,34 @@ def parse_work_mode(is_remote_flag):
         return "Remote"
     elif is_remote_flag is False:
         return "Onsite"
+    return None
+
+def extract_lpa_salary(text: str):
+    """Fallback regex to find salary in LPA."""
+    if not text:
+        return None, None
+    match = re.search(r'(?i)(?:ctc)?\s*(\d+(?:\.\d+)?)\s*(?:-|to)?\s*(\d+(?:\.\d+)?)?\s*(?:lpa|lakh|lakhs)', text)
+    if match:
+        val1 = float(match.group(1))
+        val2 = float(match.group(2)) if match.group(2) else val1
+        return min(val1, val2), max(val1, val2)
+    match2 = re.search(r'(?i)ctc\s*(\d+(?:\.\d+)?)\s*(?:-|to)?\s*(\d+(?:\.\d+)?)?', text)
+    if match2:
+        val1 = float(match2.group(1))
+        val2 = float(match2.group(2)) if match2.group(2) else val1
+        if 1 <= val1 <= 200:
+            return min(val1, val2), max(val1, val2)
+    return None, None
+
+def extract_city_fallback(text: str):
+    """Fallback regex to find known Indian cities."""
+    if not text:
+        return None
+    cities = ["Bengaluru", "Bangalore", "Mumbai", "Delhi", "Hyderabad", "Pune", "Chennai", "Kolkata", "Gurugram", "Noida", "Ahmedabad", "Jaipur", "Bhopal", "Kochi", "Coimbatore"]
+    pattern = re.compile(r'\b(' + '|'.join(cities) + r')\b', re.IGNORECASE)
+    match = pattern.search(text)
+    if match:
+        return match.group(1).title()
     return None
 
 def process_bronze_to_silver():
@@ -154,6 +183,13 @@ def process_bronze_to_silver():
             parsed_education = parse_education(job.get("education_obj"))
             parsed_work_mode = parse_work_mode(job.get("is_remote_flag"))
 
+            # -> SALARY FALLBACK
+            parsed_salary_min, parsed_salary_max = extract_lpa_salary(job_description)
+            if parsed_salary_min or parsed_salary_max:
+                job['salary_min_raw'] = parsed_salary_min
+                job['salary_max_raw'] = parsed_salary_max
+                job_description = f"Extracted Salary Hint: Min {parsed_salary_min} LPA, Max {parsed_salary_max} LPA\n\n" + job_description
+
             # 2. Call leaner Gemini API
             ai_data_obj = client.extract_job_entities(job_description, job_id)
             ai_data = ai_data_obj.model_dump()
@@ -166,13 +202,19 @@ def process_bronze_to_silver():
                 # 3. MERGE LOGIC
                 # Final silver record = Base fields + Parsed fields + Gemini fields
                 
+                # City Fallback
+                base_city = job.get("city") or job.get("job_city")
+                if not base_city:
+                    loc_text = str(job.get("job_location", "")) + " " + str(job_description)
+                    base_city = extract_city_fallback(loc_text)
+
                 # Base Fields (passthrough)
                 silver_job = {
                     "source_job_id": job_id,
                     "company_name": job.get("company_name") or job.get("employer_name"),
                     "company_sector": job.get("company_sector") or job.get("employer_company_type"),
                     "job_title": job.get("job_title"),
-                    "city": job.get("city") or job.get("job_city"),
+                    "city": base_city,
                     "state": job.get("state") or job.get("job_state"),
                     "country": job.get("country") or job.get("job_country"),
                     "employment_type": job.get("employment_type") or job.get("job_employment_type"),
