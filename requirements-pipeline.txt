@@ -1,0 +1,25 @@
+# SkillPulse India — Pipeline Container Dependencies
+# ===================================================
+# Only what the pipeline container needs.
+# Dashboard deps (streamlit, plotly) are intentionally excluded.
+# Secrets are injected as env vars by Cloud Run — no secret-manager SDK needed.
+
+# --- GCP ---
+google-cloud-storage
+google-cloud-bigquery
+db-dtypes
+
+# --- AI enrichment ---
+google-genai
+
+# --- dbt ---
+dbt-bigquery
+
+# --- Data validation ---
+pydantic
+
+# --- HTTP / API ---
+requests
+
+# --- Utilities ---
+python-dotenv
